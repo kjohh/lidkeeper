@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import ServiceManagement
 
@@ -36,7 +37,44 @@ final class SleepState: ObservableObject {
     }
 
     func toggle() {
-        let target = sleepDisabled ? "0" : "1"
+        apply(!sleepDisabled)
+    }
+
+    /// 結束前先問清楚要留下哪個狀態。
+    ///
+    /// 設定是寫在系統上的，app 結束不會還原，所以放著不管等於「闔蓋不睡」會一直生效，
+    /// 而選單列上已經沒有東西可以關掉它了。現在是正常睡眠的話就沒有這個問題，直接結束。
+    func quit() {
+        guard sleepDisabled else {
+            NSApplication.shared.terminate(nil)
+            return
+        }
+
+        // 等選單收起來再彈，不然對話框會被蓋住
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+
+            let alert = NSAlert()
+            alert.messageText = "結束之後要維持哪個狀態？"
+            alert.informativeText = "現在闔蓋不會睡。這是寫在系統上的設定，LidKeeper 結束之後會繼續生效，只是選單列上不再有開關可以改。"
+            alert.addButton(withTitle: "保持清醒")
+            alert.addButton(withTitle: "恢復正常睡眠")
+            alert.addButton(withTitle: "取消")
+
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                NSApplication.shared.terminate(nil)
+            case .alertSecondButtonReturn:
+                self.apply(false)
+                NSApplication.shared.terminate(nil)
+            default:
+                break
+            }
+        }
+    }
+
+    private func apply(_ disabled: Bool) {
+        let target = disabled ? "1" : "0"
         problem = nil
 
         // 裝過 sudoers 的話這條就過了，不會有任何提示

@@ -27,7 +27,7 @@ struct LidKeeperApp: App {
 
             Divider()
 
-            Button("結束") { NSApplication.shared.terminate(nil) }
+            Button("結束") { state.quit() }
         } label: {
             Image(systemName: state.sleepDisabled ? "cup.and.saucer.fill" : "moon.zzz")
         }
