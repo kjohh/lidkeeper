@@ -34,6 +34,21 @@ sudoers 那條**只放行 `disablesleep 0` 和 `1` 兩條完整指令**，不要
 
 狀態每 5 秒重讀一次，因為使用者可能在終端機直接改。
 
+## 打開時要有反應
+
+`LSUIElement` 的 app 在 Finder 點兩下之後畫面上什麼都不會發生，使用者不知道它去了哪裡。所以啟動後會從選單列圖示滑出一個 popover 說明它在那裡，6 秒後自己收掉，也可以按「知道了」關掉。
+
+錨點是從 `NSApp.windows` 裡找型別名稱含 `StatusBar` 的 window 拿到的，因為 SwiftUI 的 `MenuBarExtra` 沒有公開 `NSStatusItem`。這段依賴 SwiftUI 的內部命名，哪天 Apple 改了就會找不到錨點：那時的行為是**提示安靜地不出現**，app 其他功能完全不受影響。這是刻意選的失敗方式，不要改成硬跳一個置中的視窗。
+
+status item 是非同步建立的，所以找不到時會每 0.3 秒重試，最多 10 次。
+
+這段有兩個坑，改動的時候不要踩回去：
+
+- **錨點剛出現時 `bounds.height` 是 0**，那個狀態下 `popover.show` 會靜靜地失敗（`isShown` 留在 false），所以重試條件是「找到 window **而且** 高度大於 0」，不能只判斷找不找得到。
+- **`popover.contentSize` 一定要自己給**。`NSHostingController` 在這裡算不出 intrinsic size，`preferredContentSize` 會是 0 乘 0，popover 開了也是看不見的。
+
+app 已經在跑的時候再去 Finder 點兩下，macOS 只發 reopen 事件、不會重新啟動，`applicationDidFinishLaunching` 不會再跑。所以 `applicationShouldHandleReopen` 也要叫出提示，文字換成「已經開著了」。少了這條的話使用者會覺得點兩下沒反應。
+
 ## 結束前一定要問
 
 `SleepDisabled` 是寫在系統上的，app 結束不會還原。所以在「闔蓋不會睡」的狀態下按結束，會先跳一個對話框問要留下哪個狀態（保持清醒 / 恢復正常睡眠 / 取消）；正常睡眠的狀態下沒有東西會殘留，直接結束不問。
