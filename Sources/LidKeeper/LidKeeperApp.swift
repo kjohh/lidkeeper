@@ -8,40 +8,11 @@ struct LidKeeperApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            // 這個 app 只做一件事，所以那件事自己一區，標題直接講現在的狀況
-            Section(state.sleepDisabled ? "現在闔蓋不會睡" : "現在闔蓋會睡") {
-                Toggle("闔蓋保持清醒", isOn: Binding(
-                    get: { state.sleepDisabled },
-                    set: { state.setSleepDisabled($0) }
-                ))
-            }
-
-            // 底下這兩個是偏好，開了就一直是那樣，跟上面的主開關不同性質
-            Section("選項") {
-                Toggle("闔蓋時說話", isOn: Binding(
-                    get: { state.voiceEnabled },
-                    set: { state.setVoiceEnabled($0) }
-                ))
-
-                Toggle("開機時啟動", isOn: Binding(
-                    get: { state.launchAtLogin },
-                    set: { state.setLaunchAtLogin($0) }
-                ))
-            }
-
-            if let problem = state.problem {
-                Section {
-                    Label(problem, systemImage: "exclamationmark.triangle")
-                }
-            }
-
-            Divider()
-
-            Button("結束 LidKeeper") { state.quit() }
+            PanelView(state: state)
         } label: {
             Image(systemName: state.sleepDisabled ? "cup.and.saucer.fill" : "moon.zzz")
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }
 

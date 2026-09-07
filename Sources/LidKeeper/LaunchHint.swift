@@ -29,7 +29,8 @@ enum LaunchHint {
         popover.contentViewController = NSHostingController(rootView: HintView(reopened: reopened, onDismiss: dismiss))
         popover.contentSize = Self.contentSize   // 不給的話會是 0 乘 0，等於看不見
 
-        NSApp.activate(ignoringOtherApps: true)
+        // 不搶前景。window 樣式的 MenuBarExtra 面板也錨在同一顆按鈕上，
+        // 把 app 拉到前景會讓兩個視窗互相重排。
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         self.popover = popover
 
@@ -44,8 +45,10 @@ enum LaunchHint {
     /// 撈 MenuBarExtra 建出來的選單列按鈕，拿來當氣泡的錨點。
     /// 只讀 window 的型別名稱跟 contentView，沒有用到私有 API。
     private static func statusItemView() -> NSView? {
+        // window 樣式的 MenuBarExtra 會多出一個面板 window，型別名稱同樣帶 StatusBar。
+        // 選單列上那顆按鈕只有幾十點寬，用寬度就能把面板濾掉，不然氣泡會釘在面板上互相推擠。
         for window in NSApp.windows where String(describing: type(of: window)).contains("StatusBar") {
-            if let view = window.contentView, view.window != nil {
+            if let view = window.contentView, view.window != nil, view.bounds.width < 80 {
                 return view
             }
         }
