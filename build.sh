@@ -17,6 +17,11 @@ cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Scripts/install-sudoers.sh "$APP/Contents/Resources/install-sudoers.sh"
 chmod +x "$APP/Contents/Resources/install-sudoers.sh"
 
+# 闔蓋要播的聲音。還沒放就跳過，app 那邊會退回系統語音
+if compgen -G "Resources/lid-closed.*" > /dev/null; then
+  cp Resources/lid-closed.* "$APP/Contents/Resources/"
+fi
+
 # ad-hoc 簽名。本機編出來的 app 沒有 quarantine 標記，這樣就夠了。
 codesign --force --sign - "$APP"
 

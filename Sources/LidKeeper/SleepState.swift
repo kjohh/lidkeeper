@@ -1,8 +1,9 @@
 import AppKit
 import Foundation
+import IOKit
 import ServiceManagement
 
-/// 讀寫系統的 SleepDisabled 旗標。
+/// 讀寫系統的 SleepDisabled 旗標，順便看著蓋子開闔。
 ///
 /// 讀：從 IORegistry 讀 IOPMrootDomain 的 SleepDisabled，不需要權限。
 /// 寫：只能透過 `sudo pmset -a disablesleep`，需要 root。
@@ -12,14 +13,22 @@ final class SleepState: ObservableObject {
     @Published private(set) var sleepDisabled = false
     @Published private(set) var problem: String?
     @Published private(set) var launchAtLogin = false
+    @Published private(set) var voiceEnabled = false
+
+    private let voice = LidVoice()
+    private var lidClosed = false
 
     private var timer: Timer?
+    private var powerNotifier: io_object_t = 0
 
     init() {
         refresh()
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        voiceEnabled = voice.enabled
+        watchPowerEvents()
 
-        // 別的地方（終端機、另一個工具）改了設定也要跟著更新
+        // 別的地方（終端機、另一個工具）改了設定也要跟著更新。
+        // 蓋子的變化不靠這個，那條路走下面的電源事件，不然要闔上五秒才會出聲。
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
@@ -29,15 +38,62 @@ final class SleepState: ObservableObject {
         let result = run("/usr/sbin/ioreg", ["-r", "-c", "IOPMrootDomain", "-d", "1"])
         guard result.status == 0 else { return }
 
-        guard let line = result.output
-            .split(separator: "\n")
-            .first(where: { $0.contains("\"SleepDisabled\"") }) else { return }
+        let lines = result.output.split(separator: "\n")
 
-        sleepDisabled = line.contains("Yes")
+        if let line = lines.first(where: { $0.contains("\"SleepDisabled\"") }) {
+            sleepDisabled = line.contains("Yes")
+        }
+
+        // 同一份輸出裡就有蓋子的狀態，不用另外再查一次。
+        // 注意隔壁還有個 AppleClamshellCausesSleep，所以要連引號一起比對。
+        if let line = lines.first(where: { $0.contains("\"AppleClamshellState\"") }) {
+            updateLid(closed: line.contains("Yes"))
+        }
     }
 
-    func toggle() {
-        apply(!sleepDisabled)
+    /// 蓋子的狀態由 IOPMrootDomain 主動推過來，不用把輪詢間隔縮短去等它。
+    /// 這裡不挑特定訊息類型，收到任何電源事件就重讀一次，省得依賴那些沒有公開常數的值。
+    private func watchPowerEvents() {
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+        IONotificationPortSetDispatchQueue(port, .main)
+
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard service != 0 else { return }
+        defer { IOObjectRelease(service) }
+
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        IOServiceAddInterestNotification(port, service, kIOGeneralInterest, { context, _, _, _ in
+            guard let context else { return }
+            // 上面指定了 main queue，所以這裡一定在主執行緒上
+            MainActor.assumeIsolated {
+                Unmanaged<SleepState>.fromOpaque(context).takeUnretainedValue().refresh()
+            }
+        }, context, &powerNotifier)
+    }
+
+    /// 蓋子闔上而且現在是不睡的狀態，才值得出聲。
+    /// 本來就要睡的話講到一半也會被切掉，不如不要講。
+    private func updateLid(closed: Bool) {
+        guard closed != lidClosed else { return }
+        lidClosed = closed
+
+        if closed {
+            if sleepDisabled { voice.lidClosed() }
+        } else {
+            voice.lidOpened()
+        }
+    }
+
+    func setVoiceEnabled(_ on: Bool) {
+        voice.enabled = on
+        voiceEnabled = on
+
+        // 剛打開就放一次，不然要闔蓋才知道自己選到什麼聲音
+        if on { voice.preview() }
+    }
+
+    func setSleepDisabled(_ on: Bool) {
+        apply(on)
     }
 
     /// 結束前先問清楚要留下哪個狀態。

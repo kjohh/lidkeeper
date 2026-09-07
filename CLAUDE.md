@@ -12,10 +12,12 @@
 
 ## 架構
 
-一個 SwiftPM executable，包成 `.app` bundle。兩個檔案：
+一個 SwiftPM executable，包成 `.app` bundle：
 
 - `Sources/LidKeeper/LidKeeperApp.swift`：`MenuBarExtra` 的選單內容，純 UI。
-- `Sources/LidKeeper/SleepState.swift`：讀寫系統狀態，所有邏輯都在這。
+- `Sources/LidKeeper/SleepState.swift`：讀寫系統狀態、看著蓋子開闔，所有邏輯都在這。
+- `Sources/LidKeeper/LidVoice.swift`：闔蓋時出聲，只管挑檔案跟播放。
+- `Sources/LidKeeper/LaunchHint.swift`：啟動後從選單列滑出來的提示氣泡。
 
 `build.sh` 編譯後手動組 bundle（執行檔 + `Info.plist` + `AppIcon.icns` + 提權腳本 + ad-hoc 簽名）。沒有 Xcode 專案檔，不要加。
 
@@ -33,6 +35,24 @@
 sudoers 那條**只放行 `disablesleep 0` 和 `1` 兩條完整指令**，不要為了省事改成萬用字元，那等於把整個 `pmset` 開成免密碼。
 
 狀態每 5 秒重讀一次，因為使用者可能在終端機直接改。
+
+## 闔蓋時說話
+
+選單上的「闔蓋時說話」打開之後，闔蓋會播一段聲音說它不會睡。預設是開的，開關記在 UserDefaults 的 `announceOnLidClose`。
+
+只有在「闔蓋不會睡」的狀態下才出聲。本來就要睡的話，講到一半也會被系統切掉，不如不要講。
+
+**蓋子的狀態不要另外查。** `ioreg -r -c IOPMrootDomain -d 1`（讀 `SleepDisabled` 的那支）輸出裡就有 `AppleClamshellState`，同一份輸出裡撈就好。注意隔壁還有一個 `AppleClamshellCausesSleep`，比對的時候要連引號一起帶，不然會抓錯行。
+
+**偵測闔蓋走 IOKit 事件，不要靠輪詢。** 5 秒的輪詢間隔拿來偵測闔蓋太慢（闔上五秒後才出聲，人都走了），而把間隔縮短會讓一個長時間闔蓋放著的 app 一直在燒電。所以是對 `IOPMrootDomain` 註冊 general interest 通知，事件進來就重讀一次。這裡刻意不去比對 `kIOPMMessageClamshellStateChange` 那類訊息代號，因為它們在 Swift 裡沒有公開常數、值要自己算；收到任何電源事件就重讀，行為一樣而且不會算錯。5 秒的輪詢仍然留著當保底。
+
+出聲會延遲 1.2 秒。蓋上的瞬間音訊輸出還在切換，太早講會被吃掉開頭。這段期間如果蓋子又被打開，就取消不講。
+
+### 換聲音
+
+音檔放 `Resources/lid-closed.<副檔名>`，`build.sh` 會把它複製進 bundle。m4a、mp3、wav、aiff、caf 都吃，程式會自己找。
+
+**沒放音檔的話會退回系統語音講一句英文。** 那個聲音很機械，只是為了讓功能在還沒挑好聲音的時候也是活的，不是最終樣貌。放了檔案就會自動改用檔案，程式不用動。
 
 ## 打開時要有反應
 
