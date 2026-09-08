@@ -87,13 +87,43 @@ final class SleepState: ObservableObject {
     func setVoiceEnabled(_ on: Bool) {
         voice.enabled = on
         voiceEnabled = on
-
-        // 剛打開就放一次，不然要闔蓋才知道自己選到什麼聲音
-        if on { voice.preview() }
     }
 
+    /// 面板上那顆試聽鍵。開開關不該連帶播放，想聽的人自己點。
+    func previewVoice() {
+        voice.preview()
+    }
+
+    /// 畫面先走，pmset 丟到背景。
+    ///
+    /// pmset 是外部程序，同步跑會把主執行緒卡住一段時間，那段時間剛好吃掉整個切換動畫，
+    /// 看起來就是開關瞬間跳過去。真正的狀態等 refresh 回來校正。
     func setSleepDisabled(_ on: Bool) {
-        apply(on)
+        sleepDisabled = on
+        problem = nil
+
+        let target = on ? "1" : "0"
+        Task { [weak self] in
+            let granted = await Self.runOffMain("/usr/bin/sudo",
+                                                ["-n", "/usr/bin/pmset", "-a", "disablesleep", target])
+            guard let self else { return }
+            // 免密碼那條沒過，就走彈系統密碼框的路徑
+            if !granted { self.grantPermission(then: target) }
+            self.refresh()
+        }
+    }
+
+    private nonisolated static func runOffMain(_ path: String, _ arguments: [String]) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: path)
+            process.arguments = arguments
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            do { try process.run() } catch { return false }
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        }.value
     }
 
     /// 結束前先問清楚要留下哪個狀態。

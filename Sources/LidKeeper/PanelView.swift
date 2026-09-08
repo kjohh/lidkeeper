@@ -15,6 +15,9 @@ struct PanelView: View {
         _lidOpen = State(initialValue: lidOpen)
     }
 
+    /// 0 是睡著、1 是醒著。畫面上所有顏色都跟著它走，才會一起過渡。
+    private var awakeAmount: Double { state.sleepDisabled ? 1 : 0 }
+
     var body: some View {
         VStack(spacing: 0) {
             stage
@@ -37,20 +40,43 @@ struct PanelView: View {
 
     private var stage: some View {
         ZStack {
-            Tone.wash(awake: state.sleepDisabled)
+            ZStack {
+                Tone.washNeutral
+                Tone.washBlue.opacity(lidOpen ? awakeAmount : 0)
+            }
+
+            // 螢幕光把筆電後面的空間照亮。線性漸層只有最上面那條是藍的，
+            // 到筆電的高度早就退成白色了，要有光暈才看得到。
+            Ellipse()
+                .fill(RadialGradient(
+                    colors: [Tone.o3.opacity(0.34), Tone.o3.opacity(0.13), .clear],
+                    center: .center, startRadius: 4,
+                    endRadius: lidOpen ? 140 : 108))
+                .frame(width: lidOpen ? 300 : 240, height: lidOpen ? 170 : 120)
+                .offset(y: lidOpen ? -14 : 18)
+                .opacity(lidOpen ? awakeAmount : 0)
+                .animation(.easeInOut(duration: 0.6), value: lidOpen)
 
             LaptopArt(lidAngle: lidOpen ? Metrics.openAngle : Metrics.shutAngle,
-                      awake: state.sleepDisabled,
+                      awakeAmount: awakeAmount,
                       palette: .mist)
 
             // 闔著的時候它在裡面，只有那雙眼睛露在光裡。
             // 打開時立刻收掉，闔上時等蓋子翻完才出現，才不會跟球同時在場。
             eyes(diameter: 9, spacing: 21, reach: 1.5)
                 .offset(y: Metrics.shutEyesY)
-                .opacity(lidOpen || !state.sleepDisabled ? 0 : 1)
+                .opacity(lidOpen ? 0 : awakeAmount)
                 .animation(.easeOut(duration: lidOpen ? 0.1 : 0.22)
                     .delay(lidOpen ? 0 : 0.62), value: lidOpen)
-                .animation(.easeOut(duration: 0.2), value: state.sleepDisabled)
+
+            // 影子落在鍵盤面上，不是黏在球身後。壓扁的比例照相機俯角來。
+            Ellipse()
+                .fill(RadialGradient(colors: [.black.opacity(0.24), .black.opacity(0.07), .clear],
+                                     center: .center, startRadius: 0, endRadius: 38))
+                .frame(width: Metrics.orbSize * 0.92, height: Metrics.orbSize * 0.92 * 0.375)
+                .offset(x: 4, y: Metrics.orbCastY)
+                .opacity(lidOpen ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(lidOpen ? 0.62 : 0), value: lidOpen)
 
             // 打開的時候整顆浮在鍵盤上方。等蓋子翻到一半以上才成形。
             orb
@@ -61,6 +87,7 @@ struct PanelView: View {
                     .delay(lidOpen ? 0.46 : 0), value: lidOpen)
         }
         .frame(width: Metrics.panelWidth, height: Metrics.stageHeight)
+        .animation(.easeInOut(duration: 0.42), value: state.sleepDisabled)
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture {
@@ -74,10 +101,14 @@ struct PanelView: View {
         ZStack {
             Circle()
                 .fill(RadialGradient(
-                    colors: state.sleepDisabled
-                        ? [Tone.o1, Tone.o2, Tone.o3, Tone.o4]
-                        : [Tone.grey0, Tone.grey1, Tone.grey2, Tone.grey3],
+                    colors: [Tone.grey0, Tone.grey1, Tone.grey2, Tone.grey3],
                     center: UnitPoint(x: 0.34, y: 0.27), startRadius: 2, endRadius: 62))
+
+            Circle()
+                .fill(RadialGradient(
+                    colors: [Tone.o1, Tone.o2, Tone.o3, Tone.o4],
+                    center: UnitPoint(x: 0.34, y: 0.27), startRadius: 2, endRadius: 62))
+                .opacity(awakeAmount)
 
             // 右下的環境反光
             Circle()
@@ -97,14 +128,10 @@ struct PanelView: View {
                 .frame(width: 6, height: 6)
                 .offset(x: -15, y: -18)
 
-            if state.sleepDisabled {
-                eyes(diameter: 10.5, spacing: 17, reach: 1.9).offset(y: 6)
-            } else {
-                shutEyes.offset(y: 6)
-            }
+            shutEyes.offset(y: 6).opacity(1 - awakeAmount)
+            eyes(diameter: 10.5, spacing: 17, reach: 1.9).offset(y: 6).opacity(awakeAmount)
         }
         .frame(width: Metrics.orbSize, height: Metrics.orbSize)
-        .shadow(color: .black.opacity(0.18), radius: 7, y: 6)
     }
 
     private func eyes(diameter: CGFloat, spacing: CGFloat, reach: CGFloat) -> some View {
@@ -163,7 +190,8 @@ struct PanelView: View {
             SwitchRow(title: "闔蓋保持清醒", isOn: state.sleepDisabled) {
                 state.setSleepDisabled(!state.sleepDisabled)
             }
-            SwitchRow(title: "闔蓋時說話", isOn: state.voiceEnabled) {
+            SwitchRow(title: "闔蓋時說話", isOn: state.voiceEnabled,
+                      onPreview: { state.previewVoice() }) {
                 state.setVoiceEnabled(!state.voiceEnabled)
             }
             SwitchRow(title: "開機時啟動", isOn: state.launchAtLogin) {
@@ -207,7 +235,9 @@ private enum Metrics {
     static let shutAngle: Double = 5
     static let openAngle: Double = 96
     static let orbSize: CGFloat = 76
-    static let orbY: CGFloat = 32
+    static let orbY: CGFloat = 24
+    /// 影子落在鍵盤面上的位置，比球底再低一點才有懸空感
+    static let orbCastY: CGFloat = 66
     /// 闔著時那雙眼睛在畫面上的位置，對到露出來的那條光
     static let shutEyesY: CGFloat = 68
 }
@@ -231,23 +261,24 @@ private enum Tone {
     static let ink2 = Color(red: 0.373, green: 0.353, blue: 0.325)
     static let track = Color(red: 0.863, green: 0.855, blue: 0.839)
 
-    static func wash(awake: Bool) -> LinearGradient {
-        LinearGradient(
-            colors: awake
-                ? [Color(red: 0.886, green: 0.918, blue: 0.957),
-                   Color(red: 0.957, green: 0.973, blue: 0.988),
-                   .white]
-                : [Color(red: 0.937, green: 0.937, blue: 0.949),
-                   Color(red: 0.976, green: 0.976, blue: 0.980),
-                   .white],
-            startPoint: .top, endPoint: .bottom)
-    }
+    static let washNeutral = LinearGradient(
+        colors: [Color(red: 0.937, green: 0.937, blue: 0.949),
+                 Color(red: 0.976, green: 0.976, blue: 0.980),
+                 .white],
+        startPoint: .top, endPoint: .bottom)
+
+    static let washBlue = LinearGradient(
+        colors: [Color(red: 0.855, green: 0.898, blue: 0.949),
+                 Color(red: 0.910, green: 0.937, blue: 0.973),
+                 Color(red: 0.973, green: 0.980, blue: 0.992)],
+        startPoint: .top, endPoint: .bottom)
 }
 
 /// 設計稿上那顆開關。系統的 switch 在這個尺寸下太大，顏色也吃不到面板的色系。
 private struct SwitchRow: View {
     let title: String
     let isOn: Bool
+    var onPreview: (() -> Void)? = nil
     let toggle: () -> Void
 
     @State private var hovering = false
@@ -259,16 +290,31 @@ private struct SwitchRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Tone.ink)
                 Spacer(minLength: 0)
-                ZStack(alignment: isOn ? .trailing : .leading) {
+
+                if let onPreview {
+                    Button(action: onPreview) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(isOn ? Tone.o3 : Tone.track)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("試聽")
+                }
+
+                ZStack {
+                    Capsule().fill(Tone.track)
                     Capsule()
-                        .fill(isOn
-                              ? AnyShapeStyle(LinearGradient(colors: [Tone.o2, Tone.o3],
-                                                             startPoint: .top, endPoint: .bottom))
-                              : AnyShapeStyle(Tone.track))
+                        .fill(LinearGradient(colors: [Tone.o2, Tone.o3],
+                                             startPoint: .top, endPoint: .bottom))
+                        .opacity(isOn ? 1 : 0)
+                        .animation(.easeOut(duration: 0.22), value: isOn)
                     Circle()
                         .fill(.white)
                         .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
-                        .padding(2)
+                        .frame(width: 14, height: 14)
+                        .offset(x: isOn ? 6 : -6)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isOn)
                 }
                 .frame(width: 30, height: 18)
             }
@@ -282,6 +328,6 @@ private struct SwitchRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.16), value: isOn)
+        .animation(.spring(response: 0.3, dampingFraction: 0.74), value: isOn)
     }
 }
