@@ -1,5 +1,11 @@
 # LidKeeper
 
+![LidKeeper — Close the lid. Stay awake.](exports/lidkeeper-hero.png)
+
+**Close the lid. Stay awake.**
+
+[▶ 觀看 15 秒介紹影片（英文旁白與字幕）](https://github.com/kjohh/lidkeeper/blob/main/exports/lidkeeper-intro.mp4) · [下載 MP4](https://raw.githubusercontent.com/kjohh/lidkeeper/main/exports/lidkeeper-intro.mp4)
+
 選單列上的一個開關：讓 MacBook 闔上螢幕之後不要睡。
 
 macOS 沒有提供這個開關。系統設定「電池」裡那個「在使用電源轉接器時，避免在顯示器關閉時自動進入睡眠」只管閒置睡眠，管不到闔蓋；闔蓋是另一條路徑，除非接了外接螢幕（clamshell 模式），否則插著電也一樣會睡。唯一能擋的是 `pmset disablesleep`，而它要 root 權限，所以沒有圖形介面可以按。
