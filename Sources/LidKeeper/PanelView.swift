@@ -9,6 +9,8 @@ struct PanelView: View {
 
     @State private var lidOpen: Bool
     @State private var gaze = CGSize.zero      // 眼球位移，單位是點
+    @State private var clock = Date().timeIntervalSinceReferenceDate
+    @State private var ticker: Timer?
 
     init(state: SleepState, lidOpen: Bool = true) {
         self.state = state
@@ -34,6 +36,21 @@ struct PanelView: View {
             case .ended: gaze = .zero
             }
         }
+        .onAppear { startTicking() }
+        .onDisappear { ticker?.invalidate(); ticker = nil }
+    }
+
+    /// 漂浮和眨眼靠這個時鐘。
+    ///
+    /// 不用 TimelineView 是因為它吃 display link，而 MenuBarExtra 的面板不一定會驅動；
+    /// 也不用 repeatForever，那種永不結束的動畫會讓 window 樣式的面板一直重新定位。
+    private func startTicking() {
+        ticker?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
+            Task { @MainActor in clock = Date().timeIntervalSinceReferenceDate }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
     }
 
     // MARK: - 插畫
@@ -59,6 +76,7 @@ struct PanelView: View {
 
             LaptopArt(lidAngle: lidOpen ? Metrics.openAngle : Metrics.shutAngle,
                       awakeAmount: awakeAmount,
+                      orbLift: lidOpen ? lift : -1,
                       palette: .mist)
 
             // 闔著的時候它在裡面，只有那雙眼睛露在光裡。
@@ -69,18 +87,11 @@ struct PanelView: View {
                 .animation(.easeOut(duration: lidOpen ? 0.1 : 0.22)
                     .delay(lidOpen ? 0 : 0.62), value: lidOpen)
 
-            // 影子落在鍵盤面上，不是黏在球身後。壓扁的比例照相機俯角來。
-            Ellipse()
-                .fill(RadialGradient(colors: [.black.opacity(0.24), .black.opacity(0.07), .clear],
-                                     center: .center, startRadius: 0, endRadius: 38))
-                .frame(width: Metrics.orbSize * 0.92, height: Metrics.orbSize * 0.92 * 0.375)
-                .offset(x: 4, y: Metrics.orbCastY)
-                .opacity(lidOpen ? 1 : 0)
-                .animation(.easeOut(duration: 0.4).delay(lidOpen ? 0.62 : 0), value: lidOpen)
-
             // 打開的時候整顆浮在鍵盤上方。等蓋子翻到一半以上才成形。
-            orb
-                .offset(y: Metrics.orbY)
+            // 漂浮和眨眼吃 TimelineView 的時鐘，不用 repeatForever：
+            // 那種永不結束的動畫會讓 window 樣式的 MenuBarExtra 不停重新定位。
+            orb(blink: blinkAmount(at: clock))
+                .offset(y: Metrics.orbY + floatOffset(at: clock))
                 .scaleEffect(lidOpen ? 1 : 0.05, anchor: .bottom)
                 .opacity(lidOpen ? 1 : 0)
                 .animation(.timingCurve(0.2, 0.86, 0.26, 1.04, duration: 0.55)
@@ -97,7 +108,27 @@ struct PanelView: View {
 
     // MARK: - 精靈
 
-    private var orb: some View {
+    /// 上下漂浮，一個來回 3.6 秒
+    private func floatOffset(at t: TimeInterval) -> CGFloat {
+        CGFloat(sin(t * 2 * .pi / 3.6)) * Metrics.floatRange
+    }
+
+    /// 0 是浮在最低點、1 是最高點
+    private var lift: CGFloat {
+        (floatOffset(at: clock) / Metrics.floatRange + 1) / 2
+    }
+
+    /// 每三秒眨一次。1 是張開，0 是完全閉上。
+    private func blinkAmount(at t: TimeInterval) -> CGFloat {
+        let cycle = t.truncatingRemainder(dividingBy: 3.0)
+        let blinkStart = 2.82
+        guard cycle > blinkStart else { return 1 }
+        let phase = (cycle - blinkStart) / (3.0 - blinkStart)   // 0...1
+        // 前半閉、後半開
+        return CGFloat(abs(phase - 0.5) * 2)
+    }
+
+    private func orb(blink: CGFloat) -> some View {
         ZStack {
             Circle()
                 .fill(RadialGradient(
@@ -129,7 +160,10 @@ struct PanelView: View {
                 .offset(x: -15, y: -18)
 
             shutEyes.offset(y: 6).opacity(1 - awakeAmount)
-            eyes(diameter: 10.5, spacing: 17, reach: 1.9).offset(y: 6).opacity(awakeAmount)
+            eyes(diameter: 10.5, spacing: 17, reach: 1.9)
+                .scaleEffect(y: max(blink, 0.06), anchor: .center)
+                .offset(y: 6)
+                .opacity(awakeAmount)
         }
         .frame(width: Metrics.orbSize, height: Metrics.orbSize)
     }
@@ -235,9 +269,11 @@ private enum Metrics {
     static let shutAngle: Double = 5
     static let openAngle: Double = 96
     static let orbSize: CGFloat = 76
-    static let orbY: CGFloat = 24
+    static let orbY: CGFloat = 10
     /// 影子落在鍵盤面上的位置，比球底再低一點才有懸空感
     static let orbCastY: CGFloat = 66
+    /// 漂浮的振幅，上下各這麼多
+    static let floatRange: CGFloat = 5.5
     /// 闔著時那雙眼睛在畫面上的位置，對到露出來的那條光
     static let shutEyesY: CGFloat = 68
 }

@@ -11,6 +11,8 @@ struct LaptopArt: View {
     var lidAngle: Double
     /// 0 是睡著、1 是醒著。中間值是過渡，顏色靠疊在灰版上的透明度做。
     var awakeAmount: Double
+    /// 精靈離鍵盤面的高度，0 是最低、1 是最高。負值表示它不在外面，不用畫影子。
+    var orbLift: Double
     var palette: LaptopPalette
 
     var body: some View {
@@ -21,6 +23,12 @@ struct LaptopArt: View {
     }
 
     // MARK: - 幾何
+
+    private enum Metrics {
+        /// 影子落在鍵盤面多深的地方（0 是鉸鏈、1 是前緣）
+        static let shadowDepthRatio = 0.69
+        static let shadowRadius = 34.0
+    }
 
     private struct Scene {
         let center: CGPoint
@@ -96,6 +104,7 @@ struct LaptopArt: View {
         if lidAngle > 90 { lid(&ctx, scene, w: w, ly: ly, lz: lz) }
 
         chassis(&ctx, scene, w: w, d: d)
+        if orbLift >= 0 { orbShadow(&ctx, scene, w: w, d: d) }
         if !isOpen { seam(&ctx, scene, w: w, d: d) }
 
         if lidAngle <= 90 { lid(&ctx, scene, w: w, ly: ly, lz: lz) }
@@ -175,6 +184,36 @@ struct LaptopArt: View {
         top.stroke(edge, with: .color(.black.opacity(0.16)), lineWidth: 0.75)
 
         ctx.stroke(outline, with: .color(.black.opacity(0.14)), lineWidth: 0.5)
+    }
+
+    /// 精靈落在鍵盤面上的影子。
+    ///
+    /// 它屬於鍵盤那個平面，所以在這裡畫並且用鍵盤面裁切：影子漫到前緣的厚度上時，
+    /// 真實世界裡會折過那條邊、在垂直面上變成另一個形狀，不可能還是同一個橢圓。
+    /// 橢圓的高寬比就是相機俯角，水平面上的圓投影過來本來就是這個比例。
+    private func orbShadow(_ ctx: inout GraphicsContext, _ s: Scene, w: Double, d: Double) {
+        let lift = min(max(orbLift, 0), 1)
+        let centre = s.project(0, d * Metrics.shadowDepthRatio, 0)
+
+        // 離地越高，攤得越開也越淡
+        let radiusX = Metrics.shadowRadius * (0.78 + lift * 0.46)
+        let radiusY = radiusX * sin(s.tilt * .pi / 180)
+        // 光源在左上，浮高時影子往右下退一點
+        let rect = CGRect(x: centre.x - radiusX + lift * 2.5,
+                          y: centre.y - radiusY + lift * 1.5,
+                          width: radiusX * 2, height: radiusY * 2)
+
+        var sh = ctx
+        sh.clip(to: deckOutline(s, w: w, d: d))
+        sh.opacity = 1.3 - lift * 0.58
+        sh.fill(Path(ellipseIn: rect), with: .radialGradient(
+            Gradient(colors: [.black.opacity(0.3), .black.opacity(0.1), .clear]),
+            center: CGPoint(x: rect.midX, y: rect.midY),
+            startRadius: 0, endRadius: radiusX))
+    }
+
+    private func deckOutline(_ s: Scene, w: Double, d: Double) -> Path {
+        s.quad([(-w, 0, 0), (w, 0, 0), (w, d, 0), (-w, d, 0)], radius: 5)
     }
 
     /// 上蓋蓋不到底，露出來的那截機身前緣就是光。
