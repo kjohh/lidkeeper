@@ -4,7 +4,7 @@
 
 **Close the lid. Stay awake.**
 
-[▶ 觀看 15 秒介紹影片（英文旁白與字幕）](https://github.com/kjohh/lidkeeper/blob/main/exports/lidkeeper-intro.mp4) · [下載 MP4](https://raw.githubusercontent.com/kjohh/lidkeeper/main/exports/lidkeeper-intro.mp4)
+[▶ 觀看 15 秒介紹影片（英文旁白與字幕）](https://github.com/kjohh/lidkeeper/blob/main/exports/lidkeeper-intro.mp4) · [下載 MP4](https://github.com/kjohh/lidkeeper/raw/refs/heads/main/exports/lidkeeper-intro.mp4)
 
 選單列上的一個開關：讓 MacBook 闔上螢幕之後不要睡。
 
