@@ -4,7 +4,7 @@
 
 **Close the lid. Stay awake.**
 
-<!-- VIDEO -->
+<video src="https://github.com/user-attachments/assets/a33e0fc5-94ba-48cf-8902-0cd0269bc5c8" controls muted playsinline></video>
 
 選單列上的一個開關：讓 MacBook 闔上螢幕之後不要睡。
 
