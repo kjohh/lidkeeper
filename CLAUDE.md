@@ -1,6 +1,6 @@
 # LidKeeper
 
-選單列 app，開關 macOS 的 `SleepDisabled` 旗標（闔蓋不睡）。只有 Kyle 自己用，兩台 Mac 各自編譯。
+選單列 app，開關 macOS 的 `SleepDisabled` 旗標（闔蓋不睡）。自用工具，兩台 Mac 各自編譯。
 
 ## 刻意保持小
 
@@ -94,7 +94,7 @@ app 已經在跑的時候再去 Finder 點兩下，macOS 只發 reopen 事件、
 
 沒有自動化測試。改完就 `./build.sh` 然後 `open LidKeeper.app`，肉眼看選單列圖示對不對、按下去有沒有切換。
 
-注意：從 Claude Code 的 shell 無法驗證選單列圖示（螢幕錄製和輔助使用權限都拿不到），**UI 有沒有正常出現只能請 Kyle 看一眼**，不要自己宣稱驗過了。
+注意：從 Claude Code 的 shell 無法驗證選單列圖示（螢幕錄製和輔助使用權限都拿不到），**UI 有沒有正常出現只能請人看一眼**，不要自己宣稱驗過了。
 
 ## 名詞
 
